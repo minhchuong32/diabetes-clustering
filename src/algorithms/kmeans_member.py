@@ -9,7 +9,7 @@ class KMeansScratch:
         self.k = k
         self.maxIters = maxIters
 
-    def fitPredict(self, X):
+    def fit_predict(self, X):
         # Bước 2: Khởi tạo trọng tâm ban đầu
         idx = np.random.choice(len(X), self.k, replace=False)
         self.centroids = X[idx]
