@@ -10,6 +10,7 @@ class HierarchicalCentroidScratch:
         clusters = {i: [i] for i in range(n_samples)}
         #tính khoảng cách so với tâm (kq tốt hơn so vơi single và com)
         centroids = {i: X[i].copy() for i in range(n_samples)}
+        sizes = {i: 1 for i in range(n_samples)} # k/t từng cụm
 
         while len(clusters) > self.k:
             keys = list(clusters.keys())
@@ -28,15 +29,20 @@ class HierarchicalCentroidScratch:
             c1, c2 = keys[i_idx], keys[j_idx]
 
             # B4: Gộp cụm
-            new_points = clusters[c1] + clusters[c2]
-            clusters[c1] = new_points
+            n1 = sizes[c1]
+            n2 = sizes[c2]
+            new_centroid = (n1 * centroids[c1] + n2 * centroids[c2]) / (n1 + n2)
+            clusters[c1] = clusters[c1] + clusters[c2]
 
             #tính lại trọng tâm
-            centroids[c1] = np.mean(X[new_points], axis=0)
+            centroids[c1] = new_centroid
+
+            sizes[c1] = n1 + n2
 
             #B5: update matran
             del clusters[c2]
             del centroids[c2]
+            del sizes[c2]
 
         #Laya labels
         labels = np.zeros(n_samples, dtype=int)
