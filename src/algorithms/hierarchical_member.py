@@ -1,35 +1,49 @@
 import numpy as np
 
-class HierarchicalScratch:
-    def __init__(self, k=3):
+class HierarchicalCentroidScratch:
+    def __init__(self, k=2):
         self.k = k
 
     def fit_predict(self, X):
-        n = len(X)
-        # Ma trận khoảng cách ban đầu
-        dist_matrix = np.linalg.norm(X[:, np.newaxis] - X, axis=2)
-        clusters = {i: [i] for i in range(n)}
-        
+        n_samples = X.shape[0]
+        # B1: kt mỗi điểm là 1 cụm
+        clusters = {i: [i] for i in range(n_samples)}
+        #tính khoảng cách so với tâm (kq tốt hơn so vơi single và com)
+        centroids = {i: X[i].copy() for i in range(n_samples)}
+
         while len(clusters) > self.k:
-            # Tìm 2 cụm gần nhau nhất (Single Linkage đơn giản)
-            min_dist = np.inf
-            to_merge = (0, 0)
-            
             keys = list(clusters.keys())
-            for i in range(len(keys)):
-                for j in range(i + 1, len(keys)):
-                    # Lấy khoảng cách nhỏ nhất giữa các điểm trong 2 cụm
-                    d = np.min(dist_matrix[np.ix_(clusters[keys[i]], clusters[keys[j]])])
-                    if d < min_dist:
-                        min_dist = d
-                        to_merge = (keys[i], keys[j])
-            
-            # Gộp cụm
-            clusters[to_merge[0]].extend(clusters[to_merge[1]])
-            del clusters[to_merge[1]]
-            
-        labels = np.zeros(n, dtype=int)
+            n_current = len(keys)
+
+            # B2: ma trận khoảng cách
+            current_centroids = np.array([centroids[k] for k in keys])
+            #kc vector --> hiệu suất
+            sum_sq = np.sum(current_centroids**2, axis=1)
+            dist_mtx = np.maximum(sum_sq[:, np.newaxis] + sum_sq - 2 * np.dot(current_centroids, current_centroids.T), 0)
+            np.fill_diagonal(dist_mtx, np.inf)
+
+            # B3: 2 cụm kc min
+            min_idx = np.argmin(dist_mtx)
+            i_idx, j_idx = divmod(min_idx, n_current)
+            c1, c2 = keys[i_idx], keys[j_idx]
+
+            # B4: Gộp cụm
+            new_points = clusters[c1] + clusters[c2]
+            clusters[c1] = new_points
+
+            #tính lại trọng tâm
+            centroids[c1] = np.mean(X[new_points], axis=0)
+
+            #B5: update matran
+            del clusters[c2]
+            del centroids[c2]
+
+        #Laya labels
+        labels = np.zeros(n_samples, dtype=int)
         for idx, (cluster_id, points) in enumerate(clusters.items()):
-            for p in points:
-                labels[p] = idx
+            labels[points] = idx
         return labels
+
+
+# model_hc = HierarchicalCentroidScratch(k=3)
+# labels_hc = model_hc.fit_predict(df_scaled)
