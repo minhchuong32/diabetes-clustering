@@ -8,7 +8,7 @@ from sklearn.preprocessing import RobustScaler
 
 sys.path.append(r"src")
 
-from algorithms.gmm_member import GMMScratch
+from algorithms.gmm_member import GMM_Simple
 from algorithms.hierarchical_member import HierarchicalCentroidScratch
 from algorithms.kmeans_member import kmeansScratch
 
@@ -32,12 +32,13 @@ print("-" * 60)
 
 for k in kRange:
     # Khởi tạo thuật toán
-    gmmMember = GMMScratch(k=k)
+    gmmMember = GMM_Simple(k=k)
     hierMember = HierarchicalCentroidScratch(k=k)
     kmMember = kmeansScratch(k=k)
 
     # Dự đoán nhãn
-    labelsGmm = gmmMember.fit_predict(xScaled)
+    gmmFit = gmmMember.fit(xScaled)
+    labelsGmm = gmmFit.predict(xScaled)
     labelsHier = hierMember.fit_predict(xScaled)
     labelsKm = kmMember.fit_predict(xScaled)
 
