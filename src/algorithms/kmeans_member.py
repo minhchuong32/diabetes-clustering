@@ -8,41 +8,27 @@ class kmeansScratch:
     def __init__(self, k=2, maxIters=100):
         self.k = k
         self.maxIters = maxIters
-        self.robustScaler = RobustScaler()
-        self.xScaled = None
+        self.centroids = None
 
     def fit_predict(self, X):
-        self.xScaled = self.robustScaler.fit_transform(X)
+        randomIdx = np.random.choice(len(X), self.k, replace=False)
+        self.centroids = X[randomIdx]
         
-        randomIdx = np.random.choice(len(self.xScaled), self.k, replace=False)
-        self.centroids = self.xScaled[randomIdx]
-        
-        clusterLabels = np.zeros(len(self.xScaled))
+        clusterLabels = np.zeros(len(X), dtype=int)
 
         for i in range(self.maxIters):
-            #tinh khoang cach tu moi diem den cac tam cum
-            distMatrix = np.linalg.norm(self.xScaled[:, np.newaxis] - self.centroids, axis=2)
-            #Gan nhan cum cho moi diem
-            numPoints = distMatrix.shape[0]
-            clusterLabels = np.zeros(numPoints, dtype=int)
-            for i in range(numPoints):
-                minDist = distMatrix[i, 0]
-                bestCluster = 0
-                for j in range(1, self.k):
-                    if distMatrix[i, j] < minDist:
-                        minDist = distMatrix[i, j]
-                        bestCluster = j
-                clusterLabels[i] = bestCluster
+            distMatrix = np.linalg.norm(X[:, np.newaxis] - self.centroids, axis=2)
             
-            #Cap nhat tam
+            clusterLabels = np.argmin(distMatrix, axis=1)
+            
             newCentroidsList = []
-            for i in range(self.k):
-                pointsInCluster = self.xScaled[clusterLabels == i]
+            for j in range(self.k):
+                pointsInCluster = X[clusterLabels == j]
                 if len(pointsInCluster) > 0:
-                    meanPoint = pointsInCluster.mean(axis=0)
-                    newCentroidsList.append(meanPoint)
+                    newCentroidsList.append(pointsInCluster.mean(axis=0))
                 else:
-                    newCentroidsList.append(self.centroids[i])
+                    newCentroidsList.append(self.centroids[j])
+            
             newCentroids = np.array(newCentroidsList)
             
             if np.allclose(self.centroids, newCentroids):
@@ -56,27 +42,26 @@ def runKMeans(filePath, defaultK=2):
         print(f"Error: File {filePath} not found.")
         return
 
-    df = pd.read_csv(filePath)
-    X = df.values
+    dfData = pd.read_csv(filePath)
+    xValues = dfData.values
+
+    robustScaler = RobustScaler()
+    xScaled = robustScaler.fit_transform(xValues)
 
     userInput = input(f"Chon k (default={defaultK}): ")
-    
-    if userInput.strip() == "":
-        kNum = defaultK
-    else:
-        kNum = int(userInput)
+    kNum = int(userInput) if userInput.strip() != "" else defaultK
 
     kmeansModel = kmeansScratch(k=kNum)
-    yPred = kmeansModel.fit_predict(X)
+    yPred = kmeansModel.fit_predict(xScaled)
 
     print("\nCluster Labels:")
     print(yPred)
 
     if len(np.unique(yPred)) > 1:
-        silScore = silhouette_score(kmeansModel.xScaled, yPred)
+        silScore = silhouette_score(xScaled, yPred)
         print(f"\nSilhouette: {silScore:.4f}")
     else:
-        print("\nKhông thể tính Silhouette.")
+        print("\nKhông thể tính Silhouette do chỉ có 1 cụm.")
 
 if __name__ == "__main__":
     dataPath = os.path.join('src', 'data', 'processed_diabetes_1000.csv')
