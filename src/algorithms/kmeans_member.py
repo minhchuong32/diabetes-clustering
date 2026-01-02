@@ -2,65 +2,82 @@ import numpy as np
 import pandas as pd
 import os
 from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import RobustScaler
 
-class KMeansScratch:
+class kmeansScratch:
     def __init__(self, k=2, maxIters=100):
-        # Bước 1: Chọn số cụm k 
         self.k = k
         self.maxIters = maxIters
+        self.robustScaler = RobustScaler()
+        self.xScaled = None
 
     def fit_predict(self, X):
-        # Bước 2: Khởi tạo trọng tâm ban đầu
-        idx = np.random.choice(len(X), self.k, replace=False)
-        self.centroids = X[idx]
+        self.xScaled = self.robustScaler.fit_transform(X)
         
-        labels = np.zeros(len(X))
+        randomIdx = np.random.choice(len(self.xScaled), self.k, replace=False)
+        self.centroids = self.xScaled[randomIdx]
+        
+        clusterLabels = np.zeros(len(self.xScaled))
 
-        for _ in range(self.maxIters):
-            # Bước 3: Gán các điểm dữ liệu vào các cụm
-            distances = np.linalg.norm(X[:, np.newaxis] - self.centroids, axis=2)
-            labels = np.argmin(distances, axis=1)
+        for i in range(self.maxIters):
+            #tinh khoang cach tu moi diem den cac tam cum
+            distMatrix = np.linalg.norm(self.xScaled[:, np.newaxis] - self.centroids, axis=2)
+            #Gan nhan cum cho moi diem
+            numPoints = distMatrix.shape[0]
+            clusterLabels = np.zeros(numPoints, dtype=int)
+            for i in range(numPoints):
+                minDist = distMatrix[i, 0]
+                bestCluster = 0
+                for j in range(1, self.k):
+                    if distMatrix[i, j] < minDist:
+                        minDist = distMatrix[i, j]
+                        bestCluster = j
+                clusterLabels[i] = bestCluster
             
-            # Bước 4: Cập nhật trọng tâm (trung bình)
-            newCentroids = np.array([X[labels == i].mean(axis=0) if len(X[labels == i]) > 0 
-                                     else self.centroids[i] for i in range(self.k)])
+            #Cap nhat tam
+            newCentroidsList = []
+            for i in range(self.k):
+                pointsInCluster = self.xScaled[clusterLabels == i]
+                if len(pointsInCluster) > 0:
+                    meanPoint = pointsInCluster.mean(axis=0)
+                    newCentroidsList.append(meanPoint)
+                else:
+                    newCentroidsList.append(self.centroids[i])
+            newCentroids = np.array(newCentroidsList)
             
-            # Bước 5: Kiểm tra hội tụ
-            if np.all(self.centroids == newCentroids):
+            if np.allclose(self.centroids, newCentroids):
                 break
             self.centroids = newCentroids
             
-        return labels
+        return clusterLabels
 
-def demo():
-    dataPath = os.path.join('src', 'data', 'diabetes_1000.csv')
-
-    if not os.path.exists(dataPath):
-        print(f"Error: File not found at {dataPath}")
+def runKMeans(filePath, defaultK=2):
+    if not os.path.exists(filePath):
+        print(f"Error: File {filePath} not found.")
         return
 
-    df = pd.read_csv(dataPath)
+    df = pd.read_csv(filePath)
+    X = df.values
+
+    userInput = input(f"Chon k (default={defaultK}): ")
     
-    # Loại bỏ cột nhãn 
-    if 'Outcome' in df.columns:
-        X = df.drop('Outcome', axis=1).values
+    if userInput.strip() == "":
+        kNum = defaultK
     else:
-        X = df.values
+        kNum = int(userInput)
 
-    k = 3
-    print(f"Start K-Means with k={k}")
-    
-    kmeansModel = KMeansScratch(k=k)
-    labels = kmeansModel.fitPredict(X)
+    kmeansModel = kmeansScratch(k=kNum)
+    yPred = kmeansModel.fit_predict(X)
 
-    print("\nPredicted Labels:")
-    print(labels)
+    print("\nCluster Labels:")
+    print(yPred)
 
-    if len(np.unique(labels)) > 1:
-        silScore = silhouette_score(X, labels)
-        print(f"\nSilhouette Score: {silScore}")
+    if len(np.unique(yPred)) > 1:
+        silScore = silhouette_score(kmeansModel.xScaled, yPred)
+        print(f"\nSilhouette: {silScore:.4f}")
     else:
-        print("\nCannot calculate Silhouette Score with only 1 cluster.")
-#Demo thì gọi
-# if __name__ == "__main__":
-#     demo()
+        print("\nKhông thể tính Silhouette.")
+
+if __name__ == "__main__":
+    dataPath = os.path.join('src', 'data', 'processed_diabetes_1000.csv')
+    runKMeans(dataPath)
