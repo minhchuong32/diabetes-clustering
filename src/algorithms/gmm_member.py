@@ -1,73 +1,107 @@
+import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal
+from sklearn.metrics import silhouette_score
 
-
-class GMMScratch:
-    def __init__(self, k=3, max_iters=100, tol=1e-4):
+class GMM_Simple:
+    def __init__(self, k=2, max_iters=50):
         self.k = k
         self.max_iters = max_iters
-        self.tol = tol
+        self.tol = 1e-6
+        self.eps = 1e-6 # Chống lỗi ma trận suy biến
 
-    def multivariate_gaussian(self, X, mean, cov):
-        """Tính hàm mật độ xác suất của phân phối chuẩn đa biến."""
-        n = X.shape[1]
-        diff = X - mean
-        # Thêm một lượng nhỏ vào đường chéo ma trận hiệp phương sai để tránh ma trận suy biến (singular)
-        cov = cov + np.eye(n) * 1e-6
+    def khoi_tao_tham_so(self, X):
+        """Khởi tạo Trọng số, Tâm cụm và Hiệp phương sai"""
+        self.n_samples, self.n_features = X.shape
+        
+        # Trọng số (Weights): Ban đầu mỗi cụm chiếm 1/K
+        self.weights = np.full(self.k, 1.0 / self.k)
+        
+        # Kỳ vọng (Means): Lấy ngẫu nhiên K điểm từ dữ liệu làm tâm
+        indices = np.random.choice(self.n_samples, self.k, replace=False)
+        self.means = X[indices]
+        
+        # Hiệp phương sai (Covariances): Khởi tạo là ma trận đơn vị cho mỗi cụm
+        self.covs = np.array([np.eye(self.n_features) for _ in range(self.k)])
 
-        det = np.linalg.det(cov)
-        inv = np.linalg.inv(cov)
+    def buoc_E(self, X):
+        """Tính trách nhiệm (Responsibility) - Điểm này thuộc cụm nào bao nhiêu %"""
+        trach_nhiem = np.zeros((self.n_samples, self.k))
+        
+        for k in range(self.k):
+            # Tính mật độ xác suất Gaussian
+            pdf = multivariate_normal.pdf(X, mean=self.means[k], cov=self.covs[k], allow_singular=True)
+            # Trách nhiệm = Trọng số * Xác suất
+            trach_nhiem[:, k] = self.weights[k] * pdf
+            
+        # Chuẩn hóa để tổng mỗi hàng = 1
+        tong_hang = trach_nhiem.sum(axis=1, keepdims=True)
+        trach_nhiem = trach_nhiem / (tong_hang + 1e-10)
+        return trach_nhiem
 
-        # Công thức PDF của Gaussian
-        exponent = -0.5 * np.sum(diff @ inv * diff, axis=1)
-        return (1.0 / np.sqrt((2 * np.pi) ** n * det)) * np.exp(exponent)
+    def buoc_M(self, X, trach_nhiem):
+        """Cập nhật lại các tham số để khớp với dữ liệu hơn"""
+        Nk = trach_nhiem.sum(axis=0) # Tổng trọng số của từng cụm
+        
+        # Cập nhật Trọng số mới
+        self.weights = Nk / self.n_samples
+        
+        for k in range(self.k):
+            # Cập nhật Tâm cụm (Mean) mới
+            self.means[k] = np.sum(trach_nhiem[:, [k]] * X, axis=0) / Nk[k]
+            
+            # Cập nhật Hiệp phương sai (Covariance) mới
+            diff = X - self.means[k]
+            self.covs[k] = np.dot((trach_nhiem[:, k] * diff.T), diff) / Nk[k]
+            self.covs[k] += np.eye(self.n_features) * self.eps # Giữ ổn định toán học
 
-    def fit_predict(self, X):
-        n_samples, n_features = X.shape
-
-        # 1. Khởi tạo các tham số
-        # Trọng số của các cụm (Weights)
-        self.weights = np.full(self.k, 1 / self.k)
-        # Tâm của các cụm (Means) - lấy ngẫu nhiên từ dữ liệu
-        idx = np.random.choice(n_samples, self.k, replace=False)
-        self.means = X[idx]
-        # Ma trận hiệp phương sai (Covariances) - khởi tạo là ma trận đơn vị
-        self.covs = [np.eye(n_features) for _ in range(self.k)]
-
-        # Ma trận Responsibilities (xác suất điểm i thuộc cụm j)
-        resp = np.zeros((n_samples, self.k))
-
+    def fit(self, X):
+        self.khoi_tao_tham_so(X)
         for i in range(self.max_iters):
-            prev_means = self.means.copy()
-
-            # --- Bước E (Expectation): Tính xác suất ---
-            for j in range(self.k):
-                resp[:, j] = self.weights[j] * self.multivariate_gaussian(
-                    X, self.means[j], self.covs[j]
-                )
-
-            # Chuẩn hóa để tổng xác suất mỗi dòng = 1
-            sum_resp = resp.sum(axis=1, keepdims=True)
-            # Tránh chia cho 0
-            sum_resp[sum_resp == 0] = 1e-10
-            resp /= sum_resp
-
-            # --- Bước M (Maximization): Cập nhật tham số ---
-            N_j = resp.sum(axis=0)  # Tổng xác suất của mỗi cụm
-
-            for j in range(self.k):
-                # Cập nhật Means
-                self.means[j] = (resp[:, j].reshape(-1, 1) * X).sum(axis=0) / N_j[j]
-
-                # Cập nhật Covariances
-                diff = X - self.means[j]
-                self.covs[j] = (resp[:, j].reshape(-1, 1) * diff).T @ diff / N_j[j]
-
-                # Cập nhật Weights
-                self.weights[j] = N_j[j] / n_samples
-
-            # Kiểm tra hội tụ
-            if np.linalg.norm(self.means - prev_means) < self.tol:
+            old_means = self.means.copy()
+            
+            trach_nhiem = self.buoc_E(X)
+            self.buoc_M(X, trach_nhiem)
+            
+            # Kiểm tra hội tụ: Nếu tâm cụm không đổi thì dừng
+            if np.linalg.norm(self.means - old_means) < self.tol:
                 break
+        return self
 
-        # Trả về nhãn là cụm có xác suất cao nhất
-        return np.argmax(resp, axis=1)
+    def predict(self, X):
+        trach_nhiem = self.buoc_E(X)
+        return np.argmax(trach_nhiem, axis=1)
+
+df = pd.read_csv('processed_diabetes_1000.csv')
+data_columns = ['time_in_hospital', 'num_lab_procedures', 'num_procedures', 
+                'num_medications', 'number_outpatient', 'number_emergency', 
+                'number_inpatient', 'number_diagnoses']
+X = df[data_columns].values.astype(float)
+
+def ve_do_thi_silhouette(X, k_min=2, k_max=10):
+    ds_silhouette = []
+    ds_k = range(k_min, k_max + 1)
+
+    print("Đang tính toán Silhouette cho từng K...")
+    for k in ds_k:
+        model = GMM_Simple(k=k)
+        model.fit(X)
+        nhan = model.predict(X)
+        
+        # Tính điểm Silhouette
+        score = silhouette_score(X, nhan)
+        ds_silhouette.append(score)
+        print(f"K = {k} | Silhouette Score: {score:.4f}")
+
+    # Vẽ biểu đồ
+    plt.figure(figsize=(10, 5))
+    plt.plot(ds_k, ds_silhouette, marker='o', linestyle='--', color='b')
+    plt.title("Đánh giá số cụm tối ưu bằng Silhouette Score")
+    plt.xlabel("Số lượng cụm (K)")
+    plt.ylabel("Silhouette Score")
+    plt.grid(True)
+    plt.show()
+
+# Gọi hàm vẽ
+ve_do_thi_silhouette(X)
