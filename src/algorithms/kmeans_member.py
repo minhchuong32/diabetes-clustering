@@ -11,17 +11,19 @@ class kmeansScratch:
         self.centroids = None
 
     def fit_predict(self, X):
+        #Lấy k tâm ban đầu ngẫu nhiên
         randomIdx = np.random.choice(len(X), self.k, replace=False)
         self.centroids = X[randomIdx]
         
         clusterLabels = np.zeros(len(X), dtype=int)
-
         for i in range(self.maxIters):
+            #Tính khoảng cách từ mỗi điểm đến mỗi tâm
             distMatrix = np.linalg.norm(X[:, np.newaxis] - self.centroids, axis=2)
-            
+            #Gán sample vào cụm gần nhất
             clusterLabels = np.argmin(distMatrix, axis=1)
             
             newCentroidsList = []
+            #Cập nhật tâm cụm
             for j in range(self.k):
                 pointsInCluster = X[clusterLabels == j]
                 if len(pointsInCluster) > 0:
