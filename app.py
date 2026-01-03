@@ -10,8 +10,8 @@ from sklearn.preprocessing import RobustScaler
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
-from ensemble import ensemble_lib, ensemble_lib_single
-from analysis import analysis_lib
+from src.ensemble import ensemble_lib, ensemble_lib_single
+from src.analysis import analysis_lib
 
 
 class DiabetesClusteringApp:

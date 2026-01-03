@@ -145,6 +145,6 @@ def plot_comparison(results, kRange, title="So sánh Silhouette"):
 # xValues = diabetesData.values
 # robustScaler = RobustScaler()
 # xScaled = robustScaler.fit_transform(xValues)
-#
+
 # results_scratch = ensemble_lib(xScaled, range(2, 21))
 # plot_comparison(results_scratch, range(2, 21), "Kết quả của Scratch")

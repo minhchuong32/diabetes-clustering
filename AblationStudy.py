@@ -35,7 +35,7 @@ def getEnsembleScore(xScaled, labelsList, weightsList, k):
     return -1.0
 
 def runAblationStudy():
-    filePath = os.path.join('src', 'data', 'elliptical_data.csv')
+    filePath = os.path.join('src', 'data', 'short_data_demo.csv')
     if not os.path.exists(filePath):
         print("Không tìm thấy file dữ liệu.")
         return
@@ -90,7 +90,7 @@ def runAblationStudy():
 
     # --- Lưu kết quả CSV ---
     results['k'] = kRange
-    pd.DataFrame(results).to_csv('ellip_ablation_study_results.csv', index=False, encoding='utf-8-sig')
+    pd.DataFrame(results).to_csv('short_ablation_study_results.csv', index=False, encoding='utf-8-sig')
 
     # --- Trực quan hóa kết quả Ablation Study ---
     plt.figure(figsize=(14, 8))
