@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import RobustScaler
 
@@ -11,17 +12,19 @@ class kmeansScratch:
         self.centroids = None
 
     def fit_predict(self, X):
+        #Khởi tạo k tâm ngẫu nhiên không lặp
         randomIdx = np.random.choice(len(X), self.k, replace=False)
         self.centroids = X[randomIdx]
         
         clusterLabels = np.zeros(len(X), dtype=int)
-
         for i in range(self.maxIters):
+            # Tính khoảng cách từ mỗi điểm đến các tâm cụm
             distMatrix = np.linalg.norm(X[:, np.newaxis] - self.centroids, axis=2)
-            
+            #Gán sample vào cụm gần nhất
             clusterLabels = np.argmin(distMatrix, axis=1)
             
             newCentroidsList = []
+            #Tính tâm cụm mới
             for j in range(self.k):
                 pointsInCluster = X[clusterLabels == j]
                 if len(pointsInCluster) > 0:
@@ -30,16 +33,15 @@ class kmeansScratch:
                     newCentroidsList.append(self.centroids[j])
             
             newCentroids = np.array(newCentroidsList)
-            
+            #Kiểm tra hội tụ
             if np.allclose(self.centroids, newCentroids):
                 break
             self.centroids = newCentroids
             
         return clusterLabels
 
-def runKMeans(filePath, defaultK=2):
+def Ve_silhouette_K(filePath):
     if not os.path.exists(filePath):
-        print(f"Error: File {filePath} not found.")
         return
 
     dfData = pd.read_csv(filePath)
@@ -48,21 +50,29 @@ def runKMeans(filePath, defaultK=2):
     robustScaler = RobustScaler()
     xScaled = robustScaler.fit_transform(xValues)
 
-    userInput = input(f"Chon k (default={defaultK}): ")
-    kNum = int(userInput) if userInput.strip() != "" else defaultK
+    rangeK = range(2, 21)
+    silScores = []
 
-    kmeansModel = kmeansScratch(k=kNum)
-    yPred = kmeansModel.fit_predict(xScaled)
-
-    print("\nCluster Labels:")
-    print(yPred)
-
-    if len(np.unique(yPred)) > 1:
-        silScore = silhouette_score(xScaled, yPred)
-        print(f"\nSilhouette: {silScore:.4f}")
-    else:
-        print("\nKhông thể tính Silhouette do chỉ có 1 cụm.")
+    for k in rangeK:
+        kmeansModel = kmeansScratch(k=k)
+        yPred = kmeansModel.fit_predict(xScaled)
+        
+        if len(np.unique(yPred)) > 1:
+            score = silhouette_score(xScaled, yPred)
+            silScores.append(score)
+        else:
+            silScores.append(0)
+    for k in rangeK:
+        print(f'k={k}, Silhouette Score={silScores[k-2]:.4f}')
+    plt.figure(figsize=(10, 6))
+    plt.plot(rangeK, silScores, marker='o', linestyle='--', scalex=True)
+    plt.title('Silhouette Score với k từ 2 đến 20')
+    plt.xlabel('Số lượng cụm k')
+    plt.ylabel('Silhouette Score')
+    plt.xticks(rangeK)
+    plt.grid(True)
+    plt.show()
 
 if __name__ == "__main__":
     dataPath = os.path.join('src', 'data', 'processed_diabetes_1000.csv')
-    runKMeans(dataPath)
+    Ve_silhouette_K(dataPath)
