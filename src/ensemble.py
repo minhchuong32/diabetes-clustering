@@ -19,55 +19,35 @@ from algorithms.kmeans_member import kmeansScratch
 from algorithms.silhoutte import silhouette_score
 
 
-class EnsembleClustering:
-    def __init__(self, k=2):
-        self.k = k
+def ensemble_lib_single(xScaled, k=3):
+    m_gmm = GaussianMixture(n_components=k, random_state=42).fit_predict(xScaled)
+    Z = linkage(xScaled, method="centroid", metric="euclidean")
+    m_hier = fcluster(Z, t=k, criterion="maxclust") - 1
+    m_km = KMeans(n_clusters=k, random_state=42, n_init="auto").fit_predict(xScaled)
 
-    def fit_predict(self, list_of_labels, xScaled=None):
-        """
-        Thực hiện gom cụm đồng thuận từ danh sách các nhãn
-        list_of_labels: [labels_gmm, labels_hier, labels_kmeans]
-        """
-        n_samples = len(list_of_labels[0])
+    #sill
+    s_g = max(silhouette_score(xScaled, m_gmm), 1e-5)
+    s_h = max(silhouette_score(xScaled, m_hier), 1e-5)
+    s_k = max(silhouette_score(xScaled, m_km), 1e-5)
 
-        # Tính trọng số dựa trên Silhouette Score của từng model (nếu có xScaled)
-        if xScaled is not None:
-            scores = []
-            for labels in list_of_labels:
-                score = max(silhouette_score(xScaled, labels), 1e-5)
-                scores.append(score)
-            total = sum(scores)
-            weights = [s / total for s in scores]
-        else:
-            weights = [1.0 / len(list_of_labels)] * len(list_of_labels)
+    w = np.array([s_g, s_h, s_k]) / (s_g + s_h + s_k)
+    coM = (w[0] * (m_gmm[:, None] == m_gmm) +
+           w[1] * (m_hier[:, None] == m_hier) +
+           w[2] * (m_km[:, None] == m_km))
 
-        # Xây dựng Ma trận đồng thuận (Consensus Matrix)
-        coMatrix = np.zeros((n_samples, n_samples))
-        for i, labels in enumerate(list_of_labels):
-            # Kiểm tra xem các cặp điểm có cùng nhãn không và nhân với trọng số
-            coMatrix += weights[i] * (labels[:, None] == labels)
+    labelsEns = AgglomerativeClustering(n_clusters=k, metric="precomputed", linkage="complete").fit_predict(1 - coM)
 
-        # Chuyển sang ma trận khoảng cách
-        distMatrix = 1 - coMatrix
-        np.fill_diagonal(distMatrix, 0)
-
-        # Gom cụm cuối cùng bằng Agglomerative Clustering
-        ensemble_model = AgglomerativeClustering(
-            n_clusters=self.k, metric="precomputed", linkage="complete"
-        )
-        return ensemble_model.fit_predict(distMatrix)
-
+    return labelsEns
 
 def ensemble_scratch(xScaled, kRange=range(2, 21)):
     sil_kq = {"ensemble": [], "gmm": [], "hier": [], "kmeans": []}
 
     for k in kRange:
         gmmMember = GaussianMixtureModel(k=k)
-        gmmMember.fit(xScaled)
         hierMember = HierarchicalCentroidScratch(k=k)
         kmMember = kmeansScratch(k=k)
 
-        labelsGmm = gmmMember.predict(xScaled)
+        labelsGmm = gmmMember.fit_predict(xScaled)
         labelsHier = hierMember.fit_predict(xScaled)
         labelsKm = kmMember.fit_predict(xScaled)
 
@@ -79,7 +59,7 @@ def ensemble_scratch(xScaled, kRange=range(2, 21)):
         sil_kq["hier"].append(s_h)
         sil_kq["kmeans"].append(s_k)
 
-        # Tính trọng số Adaptive
+        # Tính trọng số
         total = s_g + s_h + s_k
         w_g, w_h, w_k = s_g / total, s_h / total, s_k / total
 

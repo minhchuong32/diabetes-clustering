@@ -8,15 +8,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from sklearn.preprocessing import RobustScaler
 
-# Thiết lập đường dẫn để import từ thư mục src
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
-# Import đúng tên Class từ các file algorithms của bạn
-from algorithms.gmm_member import GaussianMixtureModel
-from algorithms.hierarchical_member import HierarchicalCentroidScratch
-from algorithms.kmeans_member import kmeansScratch
-from algorithms.silhoutte import silhouette_score
-from ensemble import EnsembleClustering
+from ensemble import ensemble_lib, ensemble_lib_single
+from analysis import analysis_lib
 
 
 class DiabetesClusteringApp:
@@ -130,6 +125,7 @@ class DiabetesClusteringApp:
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
         if file_path:
             try:
+                self.file_path = file_path
                 self.df = pd.read_csv(file_path)
                 # Lọc lấy các cột số
                 data_numeric = self.df.select_dtypes(include=[np.number])
@@ -147,8 +143,8 @@ class DiabetesClusteringApp:
 
     # --- TAB 2: BIỂU ĐỒ SILHOUETTE ---
     def setup_tab_elbow(self):
-        self.fig_frame = tk.Frame(self.tab_elbow, bg="white")
-        self.fig_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        self.plot_container = tk.Frame(self.tab_elbow, bg="white")
+        self.plot_container.pack(fill="both", expand=True, padx=20, pady=20)
         self.k_options = tk.Frame(self.tab_elbow, bg="#f1f5f9", pady=15)
         self.k_options.pack(fill="x")
 
@@ -157,164 +153,100 @@ class DiabetesClusteringApp:
         self.root.update()
 
         try:
-            self.k_values = range(2, 8)  # Tính từ K=2 đến K=7
-            self.silhouette_scores = []
+            k_range = range(2, 11)
+            results = ensemble_lib(self.X_scaled, kRange=k_range)
 
-            for k in self.k_values:
-                # Chạy 3 thuật toán scratch của bạn
-                l_gmm = GaussianMixtureModel(k=k).fit_predict(self.X_scaled)
-                l_hc = HierarchicalCentroidScratch(k=k).fit_predict(self.X_scaled)
-                l_km = kmeansScratch(k=k).fit_predict(self.X_scaled)
+            for w in self.plot_container.winfo_children(): w.destroy()
 
-                # Chạy Ensemble Consensus
-                ens = EnsembleClustering(k=k)
-                final_labels = ens.fit_predict(
-                    [l_gmm, l_hc, l_km], xScaled=self.X_scaled
-                )
+            fig = Figure(figsize=(10, 5), dpi=100)
+            ax = fig.add_subplot(111)
+            ax.plot(k_range, results['ensemble'], 'o-', color='red', label='Ensemble', linewidth=3)
+            ax.plot(k_range, results['gmm'], 's--', alpha=0.5, label='GMM')
+            ax.plot(k_range, results['km'], 'x--', alpha=0.5, label='K-Means')
+            ax.plot(k_range, results['hier'], '^--', alpha=0.5, label='Hierachical')
 
-                score = silhouette_score(self.X_scaled, final_labels)
-                self.silhouette_scores.append(score)
+            ax.set_title("So sánh Silhouette Score (Library Models)")
+            ax.set_xlabel("Số cụm K")
+            ax.set_ylabel("Silhouette Score")
+            ax.legend()
+            ax.grid(True, linestyle=':')
+            canvas = FigureCanvasTkAgg(fig, self.plot_container)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
 
-            self.update_elbow_plot()
+            self.selected_k = 2
+            self.ensemble_labels = ensemble_lib_single(self.X_scaled, k=self.selected_k)
             self.nb.select(1)
         except Exception as e:
             messagebox.showerror("Lỗi", f"Lỗi trong quá trình tính toán: {str(e)}")
 
-    def update_elbow_plot(self):
-        for widget in self.fig_frame.winfo_children():
-            widget.destroy()
-
-        fig = Figure(figsize=(8, 4), dpi=100)
-        ax = fig.add_subplot(111)
-        ax.plot(
-            self.k_values,
-            self.silhouette_scores,
-            marker="o",
-            linestyle="-",
-            color="#4f46e5",
-            linewidth=2,
-        )
-        ax.set_title(
-            "Đánh giá số cụm tối ưu (Silhouette Score)", fontsize=12, fontweight="bold"
-        )
-        ax.set_xlabel("Số lượng cụm (K)")
-        ax.set_ylabel("Silhouette Score")
-        ax.grid(True, alpha=0.3)
-
-        canvas = FigureCanvasTkAgg(fig, self.fig_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
-
-        for widget in self.k_options.winfo_children():
-            widget.destroy()
-        tk.Label(
-            self.k_options,
-            text="Chọn K để xem phân tích chi tiết:",
-            bg="#f1f5f9",
-            font=("Segoe UI", 10, "bold"),
-        ).pack(side="left", padx=20)
-
-        for i, k in enumerate(self.k_values):
-            btn = tk.Button(
-                self.k_options,
-                text=f"K = {k}",
-                command=lambda v=k: self.select_final_k(v),
-                bg="white",
-                relief="groove",
-                width=8,
-                cursor="hand2",
-            )
-            btn.pack(side="left", padx=5)
-
     # --- TAB 3: PHÂN TÍCH CHI TIẾT CỤM ---
     def setup_tab_analysis(self):
-        self.analysis_container = tk.Frame(self.tab_analysis, bg="white")
-        self.analysis_container.pack(fill="both", expand=True, padx=20, pady=20)
+        top_bar = tk.Frame(self.tab_analysis, bg="#f8fafc", pady=10)
+        top_bar.pack(fill="x")
 
-    def select_final_k(self, k):
-        self.selected_k = k
-        # Chạy lại một lần cuối với K đã chọn
-        l_gmm = GaussianMixtureModel(k=k).fit_predict(self.X_scaled)
-        l_hc = HierarchicalCentroidScratch(k=k).fit_predict(self.X_scaled)
-        l_km = kmeansScratch(k=k).fit_predict(self.X_scaled)
-        ens = EnsembleClustering(k=k)
-        self.ensemble_labels = ens.fit_predict(
-            [l_gmm, l_hc, l_km], xScaled=self.X_scaled
-        )
+        tk.Label(top_bar, text="Chọn K tối ưu:", bg="#f8fafc").pack(side="left", padx=10)
+        self.spin_k = tk.Spinbox(top_bar, from_=2, to=10, width=5)
+        self.spin_k.pack(side="left", padx=5)
 
-        self.render_cluster_analysis()
-        self.nb.select(2)
+        tk.Button(top_bar, text="XUẤT BẢNG THỐNG KÊ PHÂN CỤM BỆNH TIỂU ĐƯỜNG", command=self.run_full_analysis,
+                  bg="#10b981", fg="white", font=("Segoe UI", 9, "bold")).pack(side="left", padx=20)
 
-    def render_cluster_analysis(self):
-        for w in self.analysis_container.winfo_children():
-            w.destroy()
+        # Bảng hiển thị
+        self.tree_frame = tk.Frame(self.tab_analysis)
+        self.tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Scrollbar cho phân tích
-        canvas = tk.Canvas(self.analysis_container, bg="white")
-        scrollbar = ttk.Scrollbar(
-            self.analysis_container, orient="vertical", command=canvas.yview
-        )
-        scrollable_frame = tk.Frame(canvas, bg="white")
+    def run_full_analysis(self):
+        if self.file_path is None:
+            messagebox.showwarning("Lỗi", "Vui lòng tải dữ liệu trước!")
+            return
 
-        scrollable_frame.bind(
-            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        k = int(self.spin_k.get())
+        stats_df = analysis_lib(self.file_path, k=k)
 
-        colors = ["#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6"]
+        self.display_stats_in_tree(stats_df)
 
-        for i in range(self.selected_k):
-            cluster_df = self.df[self.ensemble_labels == i]
-            percent = (len(cluster_df) / len(self.df)) * 100
+    def display_stats_in_tree(self, df):
+        for w in self.tree_frame.winfo_children(): w.destroy()
+        tree = ttk.Treeview(self.tree_frame, columns=list(df.columns), show="headings")
 
-            card = tk.Frame(
-                scrollable_frame,
-                bg="white",
-                highlightbackground="#e2e8f0",
-                highlightthickness=1,
-                pady=15,
-                padx=15,
-            )
-            card.pack(fill="x", pady=10, padx=5)
+        for col in df.columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100, anchor="center")
 
-            tk.Label(
-                card,
-                text=f"NHÓM {i} ({percent:.1f}% bệnh nhân)",
-                font=("Segoe UI", 13, "bold"),
-                bg="white",
-                fg=colors[i % 5],
-            ).pack(anchor="w")
+        for _, row in df.iterrows():
+            vals = [round(v, 4) if isinstance(v, (float, np.float64)) else v for v in row]
+            tree.insert("", "end", values=vals)
 
-            # Hiển thị đặc trưng tiêu biểu
-            desc = (
-                f"• Thời gian nằm viện TB: {cluster_df['time_in_hospital'].mean():.2f} ngày\n"
-                f"• Số loại thuốc TB: {cluster_df['num_medications'].mean():.2f}\n"
-                f"• Số lần nhập viện nội trú TB: {cluster_df['number_inpatient'].mean():.2f}"
-            )
-            tk.Label(
-                card, text=desc, font=("Segoe UI", 10), bg="white", justify="left"
-            ).pack(anchor="w", pady=5)
+        # Scrollbars
+        vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(self.tree_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+
+        self.tree_frame.grid_columnconfigure(0, weight=1)
+        self.tree_frame.grid_rowconfigure(0, weight=1)
+
 
     # --- TAB 4: FORM DỰ ĐOÁN ---
     def setup_tab_predict(self):
         self.entries = {}
         fields = [
-            ("Thời gian nằm viện (ngày)", "time_in_hospital"),
-            ("Số xét nghiệm Lab", "num_lab_procedures"),
+            ("Chỉ số A1C (0-8)", "A1Cresult"),
             ("Số thủ thuật y tế", "num_procedures"),
-            ("Số loại thuốc sử dụng", "num_medications"),
-            ("Số lần khám ngoại trú", "number_outpatient"),
-            ("Số lần cấp cứu", "number_emergency"),
-            ("Số lần nhập viện nội trú", "number_inpatient"),
-            ("Số lượng chẩn đoán", "number_diagnoses"),
-            ("Chỉ số A1C (0-2)", "A1Cresult"),
-            ("Liều Insulin (0-1)", "insulin"),
             ("Thay đổi thuốc (0-1)", "change"),
+            ("Số lượng chẩn đoán", "number_diagnoses"),
             ("Sử dụng thuốc tiểu đường (0-1)", "diabetesMed"),
+            ("Số lần cấp cứu", "number_emergency"),
+            ("Liều Insulin (0-2)", "insulin"),
+            ("Số lần nhập viện nội trú", "number_inpatient"),
+            ("Số xét nghiệm Lab", "num_lab_procedures"),
+            ("Số lần khám ngoại trú", "number_outpatient"),
+            ("Số loại thuốc sử dụng", "num_medications"),
+            ("Thời gian nằm viện (ngày)", "time_in_hospital")
         ]
 
         main_form = tk.Frame(self.tab_predict, bg="white", pady=30)
@@ -353,21 +285,17 @@ class DiabetesClusteringApp:
             return
 
         try:
-            # Lấy dữ liệu và scale
             user_input = [float(self.entries[k].get()) for k in self.entries]
 
-            # Tính tâm (centroid) của các cụm hiện tại
+            #tâm
             centroids = []
             for i in range(self.selected_k):
                 centroids.append(self.X_scaled[self.ensemble_labels == i].mean(axis=0))
 
-            # Scale input người dùng
-            # Phải dùng scaler đã fit trên toàn bộ dữ liệu (numeric only)
             numeric_cols = self.df.select_dtypes(include=[np.number]).columns
-            scaler = RobustScaler().fit(self.df[numeric_cols])
+            scaler = RobustScaler().fit(self.df[numeric_cols].values)
             input_scaled = scaler.transform([user_input])
 
-            # Tìm cụm gần nhất bằng Euclidean Distance
             distances = [np.linalg.norm(input_scaled - c) for c in centroids]
             closest_cluster = np.argmin(distances)
 
