@@ -137,7 +137,7 @@ def analysis_lib(data_path, k=2):
                 data = df[df[cluster_col] == cluster][var].dropna()
                 n_samp = len(data)
 
-                if n_samp < 2: continue
+                if n_samp < 1: continue
 
                 mean = data.mean()
                 sd = data.std(ddof=1)

@@ -208,17 +208,20 @@ class DiabetesClusteringApp:
 
     def display_stats_in_tree(self, df):
         for w in self.tree_frame.winfo_children(): w.destroy()
-        tree = ttk.Treeview(self.tree_frame, columns=list(df.columns), show="headings")
+        
+        displayDf = df.reset_index()
+        columnNames = list(displayDf.columns)
+        
+        tree = ttk.Treeview(self.tree_frame, columns=columnNames, show="headings")
 
-        for col in df.columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=100, anchor="center")
+        for col in columnNames:
+            tree.heading(col, text=col.upper())
+            tree.column(col, width=120, anchor="center")
 
-        for _, row in df.iterrows():
-            vals = [round(v, 4) if isinstance(v, (float, np.float64)) else v for v in row]
-            tree.insert("", "end", values=vals)
+        for _, row in displayDf.iterrows():
+            cleanVals = [round(v, 4) if isinstance(v, (float, np.float64)) else v for v in row]
+            tree.insert("", "end", values=cleanVals)
 
-        # Scrollbars
         vsb = ttk.Scrollbar(self.tree_frame, orient="vertical", command=tree.yview)
         hsb = ttk.Scrollbar(self.tree_frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
